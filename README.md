@@ -1,6 +1,6 @@
 # python-irc-chat
 
-这是 networking 的课程作业。用 socket 技术实现 B/S 模式的聊天（私聊、群聊）。协议设计参考了 IRC。
+这是 networking 的课程作业。用 socket 技术实现 B/S 模式的聊天（支持私聊、群聊）。协议设计参考了 IRC。
 
 ## 依赖
 
@@ -13,7 +13,7 @@
 
 再启动客户端 `client.py`
 
-在客户端中输入 `<用户名> [<密码>]`，以空格分割，密码是可选的。如果使用密码，服务端将在数据库中记录用户暱称和密码，下次登录该用户需要使用相同的密码。
+在客户端中输入 `<用户名> [<密码>]`，以空格分割，密码是可选的。如果使用密码，服务端将在数据库中记录用户昵称和密码，下次登录该用户需要使用相同的密码。
 
 > 频道名称必须以井号 `#` 开头
 
@@ -27,9 +27,23 @@
 
 `/msg` `/join` `/part` 会改变 `defaultTarget`，也就是说，先输入 `/msg user hello` 给 user 发送了消息，之后接着向 user 发送消息都不需要输入前面的 `/msg user` 直接输入消息内容即可。
 
-## What is this
+## 原理
 
-编程上一些实现细节
+一个完整的客户端向另一个客户端发送消息流程
+
+1. 客户端向服务端使用 `/nick` 命令传递自己的昵称，表示上线
+
+2. 服务端将用户昵称和链接储存在 `connDict` 字典中
+
+3. 客户端向服务端使用 `/msg` 命令发送消息到指定的昵称
+
+4. 服务端在内部维护的 `connDict` 字典中寻找目标链接
+
+5. 服务端修改消息前缀 `prefix` 表示消息来源于此昵称
+
+6. 服务端将修改后的消息发送给目标昵称
+
+### 编程上一些实现细节
 
 ### `message.py`
 
@@ -45,6 +59,32 @@
 
 - `Message.encode()` 编码消息，返回字节型数据，可以直接用于 socket 发送。
 
+（不严格）按照 IRC 协议，下面用例子解释了 `message.py` 将消息编码后的样子
+
+由用户 *miku* 发送消息 *hello world!* 给用户 rin（从 miku 客户端发送到服务器）🔽
+
+```textile
+PRIVMSG rin :hello world!
+```
+
+上条消息经过服务器转发给 *rin* 时，服务器会给消息带上前缀（prefix）表示消息来源方🔽
+
+```textile
+:miku PRIVMSG rin :hello world!
+```
+
+发送消息给名为 `#ch1` 的频道同理，只不过频道名称以 `#` 开头以此和用户区分🔽
+
+```textile
+PRIVMSG #ch1 :hello world!
+```
+
+其他在频道里的用户收到来自此频道的消息🔽
+
+```textile
+:miku PRIVMSG #ch1 :hello world!
+```
+
 ### `connection.py`
 
 稍稍封装了一下 socket connection。
@@ -59,7 +99,9 @@
 
 - `Server.connDict{}`
 
-储存 `Connection` 对象的字典。键代表 `nickname/channel`，值是一个列表，储存和这个 `nickname/channel` 相关的 `Connection` 对象。举个例子，服务器目前连接了三个用户，分别叫 `user1` `user2` `user3`，其中 `user1` 和 `user3` 加入了 `#channelA` 频道，`user1` 和 `user2` 加入了 `#channelB` 频道。结构类似
+储存 `Connection` 对象的字典。服务器中最关键的数据结构。服务器根据这个字典进行消息转发。
+
+键代表 `nickname/channel`，值是一个列表，储存和这个 `nickname/channel` 相关的 `Connection` 对象。举个例子，服务器目前连接了三个用户，分别叫 `user1` `user2` `user3`，其中 `user1` 和 `user3` 加入了 `#channelA` 频道，`user1` 和 `user2` 加入了 `#channelB` 频道。结构类似
 
 ```json
 {
@@ -85,11 +127,13 @@
 
 ### `dbtool.py`
 
-列出 `users.db` 中所有条目，展示用
+列出 `users.db` 中所有条目，展示数据库用
 
 ### `gui.py`
 
-图形界面
+本来没有图形界面功能就已经很完善了，但其他组都在卷，功能做的花里胡哨。没个图形界面好像说不过去，没办法，给命令行套个壳子吧。
+
+这个文件提供了两个借口，用来替换 `print` 和 `input` 函数
 
 - `windows.terminal.printToTerminal(text: str)`
 
